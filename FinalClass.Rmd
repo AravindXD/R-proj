@@ -1,0 +1,409 @@
+---
+title: "Classification"
+output:
+  html_document: 
+    keep_md: true
+  word_document: default
+  pdf_document: default
+---
+
+<style>
+  /* General page styling */
+  body {
+    font-family: Arial, sans-serif;
+    line-height: 1.6;
+    color: #2C3E50;
+    background-color: #F7F9FB;
+  }
+
+  h1, h2 {
+    color: #2980B9;
+    border-bottom: 2px solid #2980B9;
+    padding-bottom: 5px;
+    margin-top: 20px;
+  }
+
+  h3, h4 {
+    color: #3498DB;
+  }
+
+  /* Code block styling */
+  code {
+    color: #D35400;
+    background-color: #FBFCFC;
+    padding: 2px 5px;
+    border-radius: 4px;
+    font-size: 0.9em;
+  }
+
+  pre {
+    background-color: #FBFCFC;
+    border-left: 4px solid #3498DB;
+    padding: 10px;
+    border-radius: 5px;
+    font-size: 0.95em;
+  }
+
+  /* Table styling */
+  .table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 20px 0;
+  }
+
+  .table th, .table td {
+    padding: 10px;
+    border: 1px solid #ddd;
+    text-align: left;
+  }
+
+  .table th {
+    background-color: #2980B9;
+    color: #FFFFFF;
+    font-weight: bold;
+  }
+
+  .table tr:nth-child(even) {
+    background-color: #F2F2F2;
+  }
+
+  /* Custom text color classes */
+  .cat {
+    color: #5D6D7E;
+    font-style: italic;
+  }
+
+  /* Highlight important results */
+  .highlight {
+    background-color: #FCF3CF;
+    padding: 5px;
+    border-radius: 4px;
+  }
+
+  .section-title {
+    font-size: 1.2em;
+    font-weight: bold;
+    color: #34495E;
+    margin-top: 15px;
+  }
+</style>
+
+
+# Load required libraries
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(caret)
+library(randomForest)
+library(xgboost)
+library(nnet)
+library(e1071)
+library(ROSE)
+library(rpart)
+library(gbm)
+library(MLmetrics)
+library(kernlab)
+```
+
+# Data Loading and Preprocessing
+
+```{r}
+# Read data
+data <- read.csv("mental_health_with_sleep_quality.csv")
+
+# Remove unnecessary columns
+data <- data %>% 
+  select(-c(User_ID, Sleep_Hours))
+
+# Convert categorical variables to factors
+categorical_cols <- c("Gender", "Mental_Health_Status", "Work_Environment_Impact", 
+                     "Support_Systems_Access", "Online_Support_Usage", "Sleep_Quality")
+data[categorical_cols] <- lapply(data[categorical_cols], factor)
+
+# Feature Engineering
+data <- data %>%
+  mutate(
+    Total_Screen_Time = Technology_Usage_Hours + Social_Media_Usage_Hours + Gaming_Hours,
+    Screen_Activity_Ratio = Screen_Time_Hours / (Physical_Activity_Hours + 0.1),
+    Tech_Social_Ratio = Technology_Usage_Hours / (Social_Media_Usage_Hours + 0.1)
+  )
+```
+
+# Data Splitting
+
+```{r}
+set.seed(123)
+trainIndex <- createDataPartition(data$Sleep_Quality, p = 0.7, list = FALSE)
+train_data <- data[trainIndex, ]
+test_data <- data[-trainIndex, ]
+
+# Create training control
+ctrl <- trainControl(
+  method = "cv",
+  number = 5,
+  classProbs = TRUE,
+  summaryFunction = multiClassSummary
+)
+```
+
+# Model 1 - Random Forest
+
+```{r}
+rf_model <- train(
+  Sleep_Quality ~ .,
+  data = train_data,
+  method = "rf",
+  trControl = trainControl(
+    method = "cv",
+    number = 5,  # Reduced from 10 to 5 for faster execution
+    verboseIter = TRUE
+  ),
+  tuneGrid = expand.grid(mtry = sqrt(ncol(train_data)-1)), # Simplified tuning
+  ntree = 100  # Reduced number of trees
+)
+```
+
+# Model 2 - XGBoost
+
+```{r}
+xgb_model <- train(
+  Sleep_Quality ~ .,
+  data = train_data,
+  method = "xgbTree",
+  trControl = ctrl,
+  metric = "Accuracy",
+  tuneGrid = expand.grid(
+    nrounds = 100,
+    max_depth = 6,
+    eta = 0.3,
+    gamma = 0,
+    colsample_bytree = 1,
+    min_child_weight = 1,
+    subsample = 1
+  ),
+  verbose = FALSE
+)
+```
+
+# Model 3 - Multinomial Logistic Regression
+
+```{r}
+multinom_model <- train(
+  Sleep_Quality ~ .,
+  data = train_data,
+  method = "multinom",
+  trControl = ctrl,
+  metric = "Accuracy",
+  trace = FALSE
+)
+```
+
+# Model 4 - Support Vector Machine
+
+```{r}
+# First, create proper scaling and preprocessing
+preProcess_range <- preProcess(train_data[,-which(names(train_data) == "Sleep_Quality")], 
+                             method = c("center", "scale"))
+
+# Apply preprocessing to both training and test data
+train_data_preprocessed <- predict(preProcess_range, train_data)
+test_data_preprocessed <- predict(preProcess_range, test_data)
+
+# Create a more robust control parameter
+ctrl_svm <- trainControl(
+  method = "cv",
+  number = 5,
+  classProbs = TRUE,
+  verboseIter = TRUE,
+  allowParallel = TRUE
+)
+
+# Define a specific tuning grid for SVM
+svm_grid <- expand.grid(
+  sigma = c(0.01, 0.02, 0.025, 0.03, 0.035, 0.04, 0.05),
+  C = c(0.5, 1, 2, 4, 8, 16)
+)
+
+# Train SVM with modified parameters
+set.seed(123)
+svm_model <- train(
+  Sleep_Quality ~ .,
+  data = train_data_preprocessed,
+  method = "svmRadial",
+  trControl = ctrl_svm,
+  tuneGrid = svm_grid,
+  preProcess = NULL,  # Already preprocessed
+  verbose = FALSE
+)
+
+```
+
+# Model 5 - Decision Tree
+
+```{r message=FALSE, warning=FALSE}
+dt_model <- train(
+  Sleep_Quality ~ .,
+  data = train_data,
+  method = "rpart",
+  trControl = ctrl,
+  metric = "Accuracy",
+  tuneLength = 10
+)
+```
+
+# Model 6 - Gradient Boosting
+
+```{r}
+gbm_model <- train(
+  Sleep_Quality ~ .,
+  data = train_data,
+  method = "gbm",
+  trControl = ctrl,
+  metric = "Accuracy",
+  tuneLength = 10,
+  verbose = FALSE
+)
+```
+
+# Model Evaluation
+
+```{r}
+# Function to evaluate models
+evaluate_model <- function(model, test_data, model_name) {
+  predictions <- predict(model, test_data)
+  cm <- confusionMatrix(predictions, test_data$Sleep_Quality)
+  
+  results <- data.frame(
+    Model = model_name,
+    Accuracy = cm$overall["Accuracy"],
+    Kappa = cm$overall["Kappa"]
+  )
+  
+  return(list(results = results, cm = cm))
+}
+
+# Evaluate all models
+models_list <- list(
+  RF = rf_model,
+  XGBoost = xgb_model,
+  Multinom = multinom_model,
+  SVM = svm_model,
+  DecisionTree = dt_model,
+  GBM = gbm_model
+)
+
+results_list <- lapply(names(models_list), function(name) {
+  evaluate_model(models_list[[name]], test_data, name)
+})
+
+# Combine results
+all_results <- do.call(rbind, lapply(results_list, function(x) x$results))
+print("Model Comparison:")
+print(all_results[order(-all_results$Accuracy),])
+```
+
+# Ensemble Model
+
+```{r}
+# Create ensemble predictions
+ensemble_predictions <- data.frame(
+  RF = predict(rf_model, test_data),
+  XGB = predict(xgb_model, test_data),
+  Multinom = predict(multinom_model, test_data),
+  SVM = predict(svm_model, test_data),
+  DT = predict(dt_model, test_data),
+  GBM = predict(gbm_model, test_data)
+)
+
+# Majority voting
+ensemble_final <- apply(ensemble_predictions, 1, function(x) {
+  names(which.max(table(x)))
+})
+ensemble_final <- factor(ensemble_final, levels = levels(test_data$Sleep_Quality))
+
+# Evaluate ensemble
+ensemble_cm <- confusionMatrix(ensemble_final, test_data$Sleep_Quality)
+print("Ensemble Model Results:")
+print(ensemble_cm)
+```
+
+# Feature Importance Analysis
+
+```{r}
+# Random Forest importance
+rf_importance <- varImp(rf_model)
+# XGBoost importance
+xgb_importance <- varImp(xgb_model)
+
+# Plot feature importance
+plot(rf_importance, top = 15, main = "Random Forest Feature Importance")
+plot(xgb_importance, top = 15, main = "XGBoost Feature Importance")
+```
+
+# Save Best Models
+
+```{r}
+# Print detailed confusion matrix for best model
+best_model_name <- all_results$Model[which.max(all_results$Accuracy)]
+cat("\nDetailed Results for Best Model (", best_model_name, "):\n")
+saveRDS(models_list[[best_model_name]], paste0("best_model_", best_model_name, ".rds"))
+```
+
+# Model Performance Visualization
+
+```{r}
+# Create performance plot
+performance_plot <- ggplot(all_results, aes(x = reorder(Model, -Accuracy), y = Accuracy)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = round(Accuracy, 3)), vjust = -0.3) +
+  theme_minimal() +
+  labs(title = "Model Performance Comparison",
+       x = "Model",
+       y = "Accuracy") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+print(performance_plot)
+```
+
+```{r}
+plot_confusion_matrix <- function(cm) {
+  # Convert confusion matrix to data frame
+  cm_d <- as.data.frame(cm$table)
+  
+  # Calculate accuracy
+  accuracy <- round(sum(diag(cm$table)) / sum(cm$table) * 100, 2)
+  
+  # Create confusion matrix plot
+  ggplot(data = cm_d, aes(x = Reference, y = Prediction, fill = Freq)) +
+    geom_tile() +
+    geom_text(aes(label = sprintf("%d", Freq)), color = "white", size = 4) +
+    scale_fill_gradient(low = "#4A90E2", high = "#2E5894") +
+    theme_minimal() +
+    labs(title = paste("Confusion Matrix\nAccuracy:", accuracy, "%"),
+         x = "Actual",
+         y = "Predicted") +
+    theme(
+      plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+      axis.text = element_text(size = 10),
+      axis.title = element_text(size = 12),
+      legend.title = element_text(size = 10),
+      legend.text = element_text(size = 8)
+    )
+}
+
+# Get predictions from the best model
+predictions <- predict(models_list[[best_model_name]], test_data)
+
+# Create confusion matrix
+cm <- confusionMatrix(predictions, test_data$Sleep_Quality)
+
+# Plot the confusion matrix
+plot_confusion_matrix(cm)
+
+# Print detailed metrics
+cat("\nDetailed Performance Metrics:\n")
+cat("Accuracy:", round(cm$overall["Accuracy"], 4), "\n")
+cat("Kappa:", round(cm$overall["Kappa"], 4), "\n")
+cat("\nClass-wise Performance:\n")
+print(cm$byClass)
+```
