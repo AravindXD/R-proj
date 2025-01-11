@@ -66,6 +66,39 @@
             color: #555;
             line-height: 1.6;
         }
+        .contributor-section {
+            text-align: center;
+            margin-top: 50px;
+            padding: 30px 20px;
+            background-color: #f8f9fa;
+            border-top: 1px solid #e9ecef;
+        }
+
+        .contributor-section a {
+            display: inline-flex;
+            align-items: center;
+            text-decoration: none;
+            color: #24292e;
+            font-size: 18px;
+            font-weight: 500;
+            padding: 10px 20px;
+            border-radius: 8px;
+            background-color: #ffffff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .contributor-section a:hover {
+            color: #0366d6;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .github-logo {
+            width: 24px;
+            height: 24px;
+            margin-right: 10px;
+        }
     </style>
     <script>
         // Pandoc 2.9 adds attributes on both header and div. We remove the former (to
@@ -81,6 +114,13 @@
 </head>
 
 <body>
+
+    <div>
+        <a href="https://github.com/AravindXD/R-proj">
+            <img src="https://img.shields.io/badge/Github-Repo-blue?style=for-the-badge&logo=github" alt="GitHub Repo">
+        </a>
+    </div>
+
     <div class="summary">
         <h2>Project Achievements</h2>
         <p>This project focuses on analyzing the relationship between mental health and technology usage. The key achievements of the project include:</p>
@@ -118,6 +158,16 @@
             <li><strong>Model Evaluation:</strong> Evaluating the performance of the classification models using metrics such as accuracy, precision, recall, and F1-score.</li>
         </ul>
     </div>
+
+    <div class="contributor-section">
+        <a href="https://github.com/AravindXD" target="_blank" rel="noopener noreferrer">
+            <img src="https://github.com/AravindXD.png?size=150" alt="GitHub Logo" class="github-logo">
+        </a>
+        <a href="https://github.com/KISH0RE-github" target="_blank" rel="noopener noreferrer">
+            <img src="https://github.com/KISH0RE-github.png?size=150" alt="GitHub Logo" class="github-logo">
+        </a>
+    </div>
+
 </body>
 
 </html>
